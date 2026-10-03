@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>WebGet — download manager</title>
+  <meta name="description" content="Paste a link, download video, music, PDFs and images, convert video to audio. Runs in your browser.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232952CC'/><path d='M16 7v13m-6-6 6 6 6-6M9 25h14' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <!-- ffmpeg.wasm (classic scripts; must stay same-origin for its worker) -->
+  <script src="vendor/ffmpeg/ffmpeg.js" defer></script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+<div class="app" id="app">
+
+  <header class="titlebar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8"/><path d="M16 7v13m-6-6 6 6 6-6M9 25h14"/></svg>
+      <span>WebGet</span>
+    </div>
+    <div class="net-pill" id="netPill" role="status" aria-live="polite"><i></i><span>Online</span></div>
+  </header>
+
+  <div class="offline-banner" id="offlineBanner" hidden role="alert">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 8.5a16 16 0 0 1 20 0M5.5 12a11 11 0 0 1 13 0M9 15.5a6 6 0 0 1 6 0M12 19h.01M3 3l18 18"/></svg>
+    <p><strong>You’re offline.</strong> <span id="offlineText">Downloads are paused and will continue on their own when the connection comes back.</span></p>
+  </div>
+
+  <nav class="toolbar" aria-label="Download list tools">
+    <div class="select-group">
+      <label class="check" title="Select all">
+        <input type="checkbox" id="selectAll" aria-label="Select all downloads"><span></span>
+      </label>
+      <button class="icon-btn small" id="bulkBtn" aria-haspopup="menu" aria-label="Actions for selected" title="Actions for selected">
+        <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+    </div>
+
+    <label class="pick">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h5"/></svg>
+      <select id="sortSel" aria-label="Sort">
+        <option value="newest">Newest</option>
+        <option value="oldest">Oldest</option>
+        <option value="name">Name</option>
+        <option value="size">Size</option>
+        <option value="status">Status</option>
+      </select>
+    </label>
+    <label class="pick">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.5V19l-4 1.5v-8z"/></svg>
+      <select id="filterSel" aria-label="Filter by file type"></select>
+    </label>
+
+    <div class="grow"></div>
+
+    <button class="btn primary" id="addBtn">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      Add download
+    </button>
+    <label class="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+      <input type="search" id="searchInput" placeholder="Search in downloads" aria-label="Search in downloads">
+    </label>
+    <button class="icon-btn" id="convertBtn" title="Convert video to audio" aria-label="Convert video to audio">
+      <svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>
+    </button>
+    <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+    </button>
+  </nav>
+
+  <main class="list-wrap" id="listWrap">
+    <table class="dl-table" aria-label="Downloads">
+      <thead>
+        <tr>
+          <th class="c-check"><span class="sr">Select</span></th>
+          <th class="c-name">Name</th>
+          <th class="c-size">Size</th>
+          <th class="c-status">Status</th>
+          <th class="c-menu"><span class="sr">Actions</span></th>
+          <th class="c-speed">Download</th>
+          <th class="c-added">Added</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+
+    <div class="empty" id="emptyState" hidden>
+      <div class="empty-drop">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 8v22m-9-9 9 9 9-9M10 38h28"/></svg>
+      </div>
+      <h2>Paste a link to start</h2>
+      <p>Press <kbd>Ctrl</kbd> + <kbd>V</kbd> anywhere on this page, drop a link here, or use <em>Add download</em>.
+         Works with direct file links and YouTube, Facebook, LinkedIn, Pinterest, Instagram, TikTok and more.</p>
+      <button class="btn primary" id="emptyAdd">Add download</button>
+    </div>
+    <div class="empty slim" id="noMatch" hidden><p>No downloads match this search or filter.</p></div>
+  </main>
+
+  <section class="details" id="details" hidden aria-label="Download details">
+    <div class="details-tabs" role="tablist">
+      <button role="tab" class="tab active" data-tab="general" aria-selected="true">General</button>
+      <button role="tab" class="tab" data-tab="progress" aria-selected="false">Progress</button>
+      <div class="grow"></div>
+      <button class="icon-btn small" id="closeDetails" aria-label="Close details"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="details-body" id="detailsBody"></div>
+  </section>
+
+  <footer class="statusbar">
+    <span class="sb-item" title="Total download speed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-5-5 5 5 5-5"/></svg><b id="sbSpeed">0 B/s</b></span>
+    <span class="sb-item" id="sbActive">0 active</span>
+    <span class="sb-item muted" id="sbStorage"></span>
+    <div class="grow"></div>
+    <span class="sb-item muted ellipsis" id="sbCurrent"></span>
+  </footer>
+</div>
+
+<!-- Row action menu (shared) -->
+<div class="menu" id="rowMenu" role="menu" hidden></div>
+
+<!-- Add download -->
+<dialog id="addDialog" class="sheet" aria-labelledby="addTitle">
+  <form method="dialog" class="sheet-inner" id="addForm" novalidate>
+    <header class="sheet-head">
+      <h2 id="addTitle">Add download</h2>
+      <button class="icon-btn small" value="cancel" aria-label="Close"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </header>
+    <div class="url-row">
+      <input type="url" id="urlInput" placeholder="https://…" autocomplete="off" spellcheck="false" aria-label="Link to download">
+      <button type="button" class="btn" id="pasteBtn">Paste</button>
+    </div>
+    <div id="analysis" class="analysis" aria-live="polite"></div>
+    <footer class="sheet-foot">
+      <button type="button" class="btn ghost" value="cancel" id="addCancel">Cancel</button>
+      <button type="button" class="btn primary" id="addGo" disabled>Download</button>
+    </footer>
+  </form>
+</dialog>
+
+<!-- Convert -->
+<dialog id="convertDialog" class="sheet" aria-labelledby="convTitle">
+  <form method="dialog" class="sheet-inner" novalidate>
+    <header class="sheet-head">
+      <h2 id="convTitle">Convert video to audio</h2>
+      <button class="icon-btn small" value="cancel" aria-label="Close"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </header>
+    <div class="field">
+      <span class="field-label">Video</span>
+      <div class="conv-source" id="convSource"></div>
+      <label class="btn ghost file-pick">Choose a file from this device<input type="file" id="convFile" accept="video/*,audio/*,.mkv,.flv,.avi,.ts"></label>
+    </div>
+    <div class="field-row">
+      <label class="field"><span class="field-label">Format</span><select id="convFormat"></select></label>
+      <label class="field"><span class="field-label">Quality</span>
+        <select id="convBitrate">
+          <option value="320">320 kbps — best</option>
+          <option value="256">256 kbps</option>
+          <option value="192" selected>192 kbps — recommended</option>
+          <option value="128">128 kbps — smaller</option>
+          <option value="96">96 kbps — voice</option>
+        </select>
+      </label>
+    </div>
+    <div class="conv-status" id="convStatus" aria-live="polite"></div>
+    <footer class="sheet-foot">
+      <button class="btn ghost" value="cancel">Close</button>
+      <button type="button" class="btn primary" id="convGo" disabled>Convert</button>
+    </footer>
+  </form>
+</dialog>
+
+<!-- Settings -->
+<dialog id="settingsDialog" class="sheet wide" aria-labelledby="setTitle">
+  <form method="dialog" class="sheet-inner" id="settingsForm" novalidate>
+    <header class="sheet-head">
+      <h2 id="setTitle">Settings</h2>
+      <button class="icon-btn small" value="cancel" aria-label="Close"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </header>
+
+    <fieldset>
+      <legend>Social media extractor</legend>
+      <p class="hint">Needed for YouTube, Facebook, Pinterest, Instagram, TikTok, X and others. Use your own <a href="https://github.com/imputnet/cobalt" target="_blank" rel="noopener">cobalt</a> server (README explains how).</p>
+      <label class="field"><span class="field-label">Extractor URL</span><input type="url" name="extractorUrl" placeholder="https://cobalt.your-domain.com/"></label>
+      <label class="field"><span class="field-label">API key <small>(if your server needs one)</small></span><input type="password" name="extractorKey" autocomplete="off" placeholder="xxxxxxxx-xxxx-…"></label>
+      <div class="test-row"><button type="button" class="btn small" id="testExtractor">Test connection</button><span id="testExtractorOut" class="test-out"></span></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>CORS proxy</legend>
+      <p class="hint">Lets you download from sites that block other websites, and reads LinkedIn posts. Deploy <code>extras/cors-proxy-worker.js</code> to Cloudflare Workers (free).</p>
+      <label class="field"><span class="field-label">Proxy URL</span><input type="url" name="proxyUrl" placeholder="https://webget-proxy.your-name.workers.dev"></label>
+      <div class="test-row"><button type="button" class="btn small" id="testProxy">Test connection</button><span id="testProxyOut" class="test-out"></span></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Defaults</legend>
+      <div class="field-row">
+        <label class="field"><span class="field-label">Video quality</span>
+          <select name="videoQuality">
+            <option value="max">Best available</option><option value="2160">2160p (4K)</option><option value="1440">1440p</option>
+            <option value="1080">1080p</option><option value="720">720p</option><option value="480">480p</option><option value="360">360p</option>
+          </select></label>
+        <label class="field"><span class="field-label">YouTube codec</span>
+          <select name="youtubeCodec"><option value="h264">H.264 — plays everywhere</option><option value="vp9">VP9</option><option value="av1">AV1 — smallest</option></select></label>
+      </div>
+      <div class="field-row">
+        <label class="field"><span class="field-label">Audio format</span>
+          <select name="audioFormat"><option value="mp3">MP3</option><option value="best">Original (best)</option><option value="ogg">OGG</option><option value="opus">Opus</option><option value="wav">WAV</option></select></label>
+        <label class="field"><span class="field-label">Audio bitrate</span>
+          <select name="audioBitrate"><option value="320">320 kbps</option><option value="256">256 kbps</option><option value="128">128 kbps</option><option value="96">96 kbps</option></select></label>
+      </div>
+      <div class="field-row">
+        <label class="field"><span class="field-label">Downloads at the same time</span>
+          <select name="maxConcurrent"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
+        <label class="field"><span class="field-label">Theme</span>
+          <select name="theme"><option value="auto">Match system</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+      </div>
+      <label class="toggle"><input type="checkbox" name="autoSave"><span></span>Save to my Downloads folder when finished</label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Quick add from any page</legend>
+      <p class="hint">Drag this to your bookmarks bar. Click it on a YouTube or Facebook page to send the link here.</p>
+      <a class="bookmarklet" id="bookmarklet" href="#">Send to WebGet</a>
+    </fieldset>
+
+    <fieldset>
+      <legend>Stored files</legend>
+      <p class="hint" id="storageInfo">Finished and partial downloads are kept in this browser until you delete them.</p>
+      <button type="button" class="btn danger small" id="clearAll">Delete all downloads</button>
+    </fieldset>
+
+    <footer class="sheet-foot">
+      <button class="btn ghost" value="cancel">Cancel</button>
+      <button type="button" class="btn primary" id="saveSettings">Save settings</button>
+    </footer>
+  </form>
+</dialog>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+</body>
+</html>
